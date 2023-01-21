@@ -3,16 +3,26 @@
 from aiogram import Bot, Dispatcher, executor, types
 
 # Импортируем библиотеку random
+from aiogram.dispatcher.filters.state import StatesGroup, State
+from aiogram.contrib.fsm_storage.memory import MemoryStorage
+from aiogram.dispatcher import FSMContext
+from pytube import YouTube
+
+import os
 
 import random
 
 import keyboards
 
+import logging
+
+import config
+
 # import sqlite3
 
 # Создаем переменную, содержащую токен бота, полученный из BotFather в Telegram
 
-token = "5555418010:AAHYAkV6ZPt5ZKqAovArDYUJ9nMn7jFfum8"
+token = config.token
 
 # Создаем экземпляр класса Бот, указываем переменную в качестве аргумента
 
@@ -20,7 +30,12 @@ my_bot = Bot(token)
 
 # Создаем экземпляр класса Диспетчер, указываем объект my_bot в качестве аргумента
 
-dp = Dispatcher(my_bot)
+dp = Dispatcher(my_bot, storage=MemoryStorage())
+storage = MemoryStorage()
+
+logging.basicConfig(level=logging.INFO)
+
+
 
 # connect = sqlite3.connect('users.db')
 # cursor = connect.cursor()
@@ -49,9 +64,69 @@ async def start(message: types.Message):
 
     await message.answer(f'Здравствуйте {message.from_user.full_name}!\n'
                          f'Тут вы можете получить информацию о курсах программирования в Geektech.\n\n'
-                         f'Чтобы посмотреть список курсов, введите команду /help или выберите кнопку с интересующим курсом ниже\n'
-                         f'А еще я загадал число от 1 до 3, попробуйте отгадать', reply_markup = keyboards.greet_kb)
-    await message.delete()
+                         f'Чтобы посмотреть список курсов, введите команду /help\nили команды /audio или /video, чтобы скачать аудио или видео по ссылке с Youtube\n'
+                         f'А еще я загадал число от 1 до 3, попробуйте отгадать')#, reply_markup = keyboards.greet_kb)
+
+def downloader(url, type):
+    yt = YouTube(url)
+    if type == "video":
+        yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc().first().download(
+            "video", f"{yt.title}.mp4")
+        return f"{yt.title}.mp4"
+    elif type == "audio":
+        yt.streams.filter(only_audio=True).first().download("audio", f"{yt.title}.mp3")
+        return f"{yt.title}.mp3"
+
+class DownloadVideo(StatesGroup):
+            download = State()
+
+class DownloadAudio(StatesGroup):
+            download = State()
+
+@dp.message_handler(commands='video')
+async def video(msg:types.Message):
+    await msg.answer(f"Отправьте ссылку и я вам его скачаю")
+    await DownloadVideo.download.set()
+
+@dp.message_handler(commands='audio')
+async def audio(msg:types.Message):
+    await msg.answer(f"Отправьте ссылку и я вам скачаю его в mp3")
+    await DownloadAudio.download.set()
+
+@dp.message_handler(state=DownloadVideo.download)
+async def download_video_state(msg:types.Message, state:FSMContext):
+    try:
+        await msg.answer("Скачиваем видео, ожидайте...")
+        title = downloader(msg.text, "video")
+        video = open(f'video/{title}', 'rb')
+        try:
+            await msg.answer("Все скачалось, вот видео")
+            await my_bot.send_video(msg.chat.id, video)
+        except Exception as error:
+            await msg.answer(f"Произошла ошибка, повторите еще раз. {error}")
+            await state.finish()
+    except:
+        await msg.answer("Ссылка не верна!")
+        await state.finish()
+    # os.remove(f'video/{title}')
+
+@dp.message_handler(state=DownloadAudio.download)
+async def download_audio_state(msg:types.Message, state:FSMContext):
+    try:
+        await msg.answer("Скачиваем аудио, ожидайте...")
+        title = downloader(msg.text, "audio")
+        audio = open(f'audio/{title}', 'rb')
+        try:
+            await msg.answer("Все скачалось, вот аудио")
+            await my_bot.send_audio(msg.chat.id, audio)
+        except Exception as error:
+            await msg.answer(f"Произошла ошибка, повторите еще раз. {error}")
+        await state.finish()
+    except:
+        await msg.answer("Ссылка не верна!")
+        await state.finish()
+    os.remove(f'audio/{title}')
+
 
 # Добавляем обработчик для команды help
 
