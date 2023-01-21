@@ -108,7 +108,7 @@ async def download_video_state(msg:types.Message, state:FSMContext):
     except:
         await msg.answer("Ссылка не верна!")
         await state.finish()
-    # os.remove(f'video/{title}')
+    os.remove(f'video/{title}')
 
 @dp.message_handler(state=DownloadAudio.download)
 async def download_audio_state(msg:types.Message, state:FSMContext):
